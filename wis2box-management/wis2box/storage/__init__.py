@@ -49,7 +49,6 @@ Verified empirically: see tests/local/test_storage_facade_slash.sh
 """
 
 
-
 def exists(path: str) -> bool:
     """
     Check if storage path exists

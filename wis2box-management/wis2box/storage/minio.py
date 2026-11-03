@@ -107,10 +107,10 @@ class MinIOStorage(StorageBase):
                                     secret_key=self.auth['password'],
                                     secure=is_secure)
             else:
-                # No static key configured: use the EC2 instance / ECS task role.
+                # No static key configured: use the instance / task role.
                 # minio-py ships an IMDS credential provider, so role-based
-                # credentials do not require swapping to the boto3 backend.
-                LOGGER.debug('No storage credentials set; using IamAwsProvider')
+                # credentials do not need the boto3 backend.
+                LOGGER.debug('No storage credentials; using IamAwsProvider')
                 self.client = Minio(endpoint=urlparsed.netloc,
                                     credentials=IamAwsProvider(),
                                     secure=is_secure)

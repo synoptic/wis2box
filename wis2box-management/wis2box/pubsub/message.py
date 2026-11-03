@@ -37,7 +37,7 @@ from wis2box.storage import get_data
 
 LOGGER = logging.getLogger(__name__)
 
-# Stable namespace for deterministic WIS2 Notification Message identifiers (F5).
+# Stable namespace for deterministic WNM identifiers (F5).
 WNM_ID_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_URL,
                               'https://wis.wmo.int/spec/wnm/1')
 
@@ -141,9 +141,10 @@ class PubSubMessage:
         else:
             serialized = json.dumps(self, default=json_serial)
 
-        # WNM Req 1A caps the complete message at 8192 bytes. Small payloads are
-        # base64-inlined via properties.content, so this is reachable in normal
-        # operation rather than an edge case. Fail here, with the size and the
+        # WNM Req 1A caps the complete message at 8192 bytes. Small
+        # payloads are base64-inlined via properties.content, so this is
+        # reachable in normal operation rather than an edge case. Fail
+        # here, with the size and the
         # data_id, rather than as an opaque rejection at the broker.
         size = len(serialized.encode('utf-8'))
         if size > WNM_MAX_BYTES:
@@ -151,7 +152,8 @@ class PubSubMessage:
             if isinstance(self.message, dict):
                 data_id = self.message.get('properties', {}).get('data_id')
             msg = (f'WIS2 notification is {size} bytes, over the '
-                   f'{WNM_MAX_BYTES}-byte limit (WNM Req 1A); data_id={data_id}')
+                   f'{WNM_MAX_BYTES}-byte limit (WNM Req 1A); '
+                   f'data_id={data_id}')
             LOGGER.error(msg)
             raise ValueError(msg)
 
@@ -215,9 +217,10 @@ class WISNotificationMessage(PubSubMessage):
         # announces. Global Brokers suppress duplicates keyed on this id
         # (Manual on WIS Vol II 4.4.5); upstream's uuid4() mints a fresh id per
         # publish and so forfeits that protection. Our ingest transport is
-        # at-least-once and the subscriber forks concurrent handlers with no
-        # per-key coordination, so the same object can legitimately be processed
-        # twice -- a stable id lets the broker collapse the duplicates instead.
+        # at-least-once and the subscriber forks concurrent handlers with
+        # no per-key coordination, so the same object can legitimately be
+        # processed twice -- a stable id lets the broker collapse the
+        # duplicates instead.
         # Content is included so a genuine revision is a distinct message.
         wnm_id = str(uuid.uuid5(
             WNM_ID_NAMESPACE,

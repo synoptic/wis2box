@@ -31,7 +31,7 @@ from wis2box.pubsub.base import BasePubSubClient
 
 LOGGER = logging.getLogger(__name__)
 
-# Seconds to wait for a QoS-1 PUBACK before treating the publish as failed (F7).
+# Seconds to wait for a QoS-1 PUBACK before the publish is failed (F7).
 PUBLISH_TIMEOUT_SECONDS = 30
 
 
@@ -97,9 +97,10 @@ class MQTTPubSubClient(BasePubSubClient):
 
         # Confirm delivery before stopping the network loop. Upstream leaves
         # this commented out and returns on result.is_published, which is
-        # evaluated immediately after publish() -- for QoS 1 the PUBACK has not
-        # arrived yet, so a successful publish is unverified and a failed one is
-        # indistinguishable from a slow one. This is the hop after our own
+        # evaluated immediately after publish() -- for QoS 1 the PUBACK has
+        # not arrived yet, so a successful publish is unverified and a
+        # failed one is indistinguishable from a slow one. This is the hop
+        # after our own
         # queue-to-broker ack, so without it the WIS2 notification publish is
         # the one unconfirmed step in the chain.
         try:
