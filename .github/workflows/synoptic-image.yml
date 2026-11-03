@@ -1,0 +1,61 @@
+# Builds the one image in this repository that carries the fork's patches.
+#
+# Deliberately a new file rather than an edit to containers.yml: that workflow
+# pushes to the wmoim Docker Hub org with secrets this fork does not hold, and
+# it fires only on main. Keeping them separate means upstream merges here never
+# conflict.
+#
+# The node pins the resulting image by digest in docker-compose.aws.yml, so the
+# tag below is provenance, not the thing that gets deployed.
+name: publish wis2box-management to ghcr.io/synoptic
+
+on:
+  push:
+    branches:
+      - aws-s3-native
+  workflow_dispatch:
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ./wis2box-management
+          file: ./wis2box-management/Dockerfile
+          # amd64 only. The node is t3a, which is x86, and QEMU-emulating an
+          # arm64 build doubles the job for an architecture nothing pulls.
+          # Moving to Graviton means adding linux/arm64 here first.
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/wis2box-management:${{ github.sha }}
+
+      - name: Report the digest to pin
+        run: |
+          {
+            echo '### Pin this in cdk/assets/compose/docker-compose.aws.yml'
+            echo '```'
+            echo "ghcr.io/${{ github.repository_owner }}/wis2box-management@${{ steps.build.outputs.digest }}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
