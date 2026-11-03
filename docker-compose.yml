@@ -10,7 +10,11 @@ services:
       - wis2box-auth
     volumes:
       - ./nginx/robots.txt:/usr/share/nginx/html/robots.txt:ro
-      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf
+      # F2: mounted as a TEMPLATE so the stock image's envsubst step can
+      # inject the bucket host and resolver at container start. Compose
+      # appends volume lists, so an override cannot remove a conf.d mount --
+      # hence changing it here rather than in the AWS override file.
+      - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
       - ${WIS2BOX_HOST_DATADIR}/.htpasswd:/etc/nginx/.htpasswd:ro
 
   wis2box-ui:

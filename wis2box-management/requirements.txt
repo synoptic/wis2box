@@ -2,7 +2,7 @@ capvalidator>=0.1.0-dev4
 elasticsearch==8.18.0
 iso3166
 isodate
-minio
+minio==7.2.15
 OWSLib
 paho-mqtt<2
 pygeometa

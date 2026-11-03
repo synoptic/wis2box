@@ -27,6 +27,7 @@ from urllib.parse import urlparse
 
 from minio import Minio
 from minio import error as minio_error
+from minio.credentials import IamAwsProvider
 from minio.notificationconfig import NotificationConfig, QueueConfig
 
 from wis2box.storage.base import PolicyTypes, StorageBase
@@ -100,10 +101,19 @@ class MinIOStorage(StorageBase):
             is_secure = True
 
         try:
-            self.client = Minio(endpoint=urlparsed.netloc,
-                                access_key=self.auth['username'],
-                                secret_key=self.auth['password'],
-                                secure=is_secure)
+            if self.auth.get('username') and self.auth.get('password'):
+                self.client = Minio(endpoint=urlparsed.netloc,
+                                    access_key=self.auth['username'],
+                                    secret_key=self.auth['password'],
+                                    secure=is_secure)
+            else:
+                # No static key configured: use the EC2 instance / ECS task role.
+                # minio-py ships an IMDS credential provider, so role-based
+                # credentials do not require swapping to the boto3 backend.
+                LOGGER.debug('No storage credentials set; using IamAwsProvider')
+                self.client = Minio(endpoint=urlparsed.netloc,
+                                    credentials=IamAwsProvider(),
+                                    secure=is_secure)
         except Exception as err:
             msg = f'Error creating MinIO client: {err}'
             LOGGER.error(msg)

@@ -26,12 +26,19 @@ echo "START /entrypoint.sh"
 
 set -e
 
-# wait for http://minio:9000/minio/health/live to be available
-while ! curl -s http://minio:9000/minio/health/live; do
-    echo "Waiting for minio to be available..."
-    sleep 1
-done
+# Wait for MinIO only when it is part of the stack. The hostname below is
+# hardcoded and there is no bypass upstream, so with AWS-managed S3 (where there
+# is no minio service) this loop never terminates and the subscriber never
+# starts. Defaults to the upstream behaviour.
+if [ "${WIS2BOX_STORAGE_WAIT_FOR_MINIO:-true}" = "true" ]; then
+    while ! curl -s http://minio:9000/minio/health/live; do
+        echo "Waiting for minio to be available..."
+        sleep 1
+    done
     echo "MinIO is available, proceed with setup"
+else
+    echo "WIS2BOX_STORAGE_WAIT_FOR_MINIO=false: skipping MinIO health gate"
+fi
 
 # run pywcmp bundle sync in background to avoid hanging in case of network issues
 pywcmp bundle sync &
