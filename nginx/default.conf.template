@@ -1,0 +1,119 @@
+# wis2box nginx config, S3-native.
+#
+# Rendered at container start by the stock nginx image's
+# /docker-entrypoint.d/20-envsubst-on-templates.sh. Mount at
+# /etc/nginx/templates/default.conf.template (NOT conf.d/default.conf).
+#
+# NGINX_ENVSUBST_FILTER must be set so envsubst only touches OUR variables and
+# leaves nginx's own ($host, $remote_addr, ...) intact:
+#   NGINX_ENVSUBST_FILTER=^(WIS2BOX_STORAGE_PUBLIC|WIS2BOX_S3_HOST|WIS2BOX_DNS_RESOLVER)$
+#
+# Differences from upstream nginx/nginx.conf:
+#   - location /wis2box-incoming/  DELETED. It proxied to the MinIO container
+#     (upstream line 49) and is the reason nginx refuses to start once MinIO is
+#     removed: literal upstream names resolve at config-parse time.
+#     Providers now PUT to the regional S3 endpoint directly.
+#   - location /data  repointed at S3 with the full directive set required to
+#     talk to it correctly (see comments inline).
+limit_req_zone $binary_remote_addr zone=my_zone:10m rate=25r/s;
+
+    server {
+        listen 80;
+        listen [::]:80;
+
+        limit_req zone=my_zone burst=200 nodelay;
+        limit_req_status 429;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Host $server_name;
+
+        add_header 'Access-Control-Allow-Origin' '*';
+        add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS';
+        add_header 'Access-Control-Allow-Headers' 'DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type';
+        add_header 'WWW-Authenticate' 'Bearer' 'always';
+
+        sendfile on;
+        gzip on;
+        gzip_types application/json application/geo+json text/css application/javascript text/plain;
+        gzip_proxied no-cache no-store private expired auth;
+        gzip_min_length 1000;
+
+        location = /robots.txt {
+            alias /usr/share/nginx/html/robots.txt;
+            add_header Content-Type text/plain;
+        }
+
+        location /data {
+            auth_request /auth;
+            auth_request_set $auth_status $upstream_status;
+
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+
+            # S3 authenticates on Host; the client's Host must not reach it.
+            proxy_set_header Host ${WIS2BOX_S3_HOST};
+            # The server block advertises Bearer at line ~18. Forwarding a client
+            # Authorization header to S3 makes it attempt SigV4 and reject the
+            # request, so strip it — the auth decision already happened above.
+            proxy_set_header Authorization "";
+            proxy_hide_header x-amz-id-2;
+            proxy_hide_header x-amz-request-id;
+
+            proxy_connect_timeout 300;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+            chunked_transfer_encoding off;
+
+            # A literal upstream is resolved once at startup and cached forever;
+            # S3's addresses rotate. A variable proxy_pass + resolver re-resolves.
+            resolver ${WIS2BOX_DNS_RESOLVER} valid=30s ipv6=off;
+            set $s3_origin "https://${WIS2BOX_S3_HOST}";
+
+            proxy_ssl_server_name on;
+            proxy_ssl_verify on;
+            proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
+            proxy_ssl_verify_depth 3;
+
+            # /data/<key> -> /<key> against the virtual-hosted bucket origin.
+            # Bare /data/ maps to the bucket root, which returns a
+            # ListBucketResult only if the bucket policy grants s3:ListBucket.
+            rewrite ^/data/?$ / break;
+            rewrite ^/data(/.*)$ $1 break;
+            proxy_pass $s3_origin;
+        }
+        location /oapi {
+            limit_req zone=my_zone burst=50 nodelay;
+            set $x_api_http_method $request_method;
+            auth_request /auth;
+            auth_request_set $auth_status $upstream_status;
+            proxy_pass http://wis2box-api:80;
+        }
+        location /wis2box-webapp/ {
+            auth_basic "Restricted Access";
+            auth_basic_user_file /etc/nginx/.htpasswd/webapp;
+            proxy_pass http://wis2box-webapp:4173/wis2box-webapp/;
+        }
+        location /auth {
+            internal;
+            proxy_pass http://wis2box-auth:80/authorize;
+            proxy_set_header        Content-Length "";
+            proxy_set_header        X-api-http-method $x_api_http_method;
+            proxy_set_header        X-Original-URI $request_uri;
+            proxy_set_header        Authorization $http_authorization;
+            proxy_pass_header       Authorization;
+        }
+        location /mqtt {
+            proxy_pass http://mosquitto:8884;
+            proxy_http_version 1.1;
+            proxy_read_timeout 75s;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+            proxy_set_header Host $host;
+        }
+        location / {
+            proxy_pass http://wis2box-ui:80;
+        }
+    }
