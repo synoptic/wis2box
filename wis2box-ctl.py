@@ -405,6 +405,15 @@ def make(args) -> None:
 
     docker_image_file = glob.glob('docker-compose.images-*.yml')[0]
     docker_compose_args = DOCKER_COMPOSE_ARGS + f' --file {docker_image_file}'
+    # The AWS overlay last, after the image pins, so it genuinely wins the
+    # merge. It parks MinIO behind a profile that is never enabled and points
+    # web-proxy at S3. Operators are trained on wis2box-ctl.py, so an overlay
+    # they have to remember to pass by hand is one that will eventually be
+    # forgotten -- and forgetting it starts the reference stack, MinIO and
+    # all, against the same data volume. Conditional, so a checkout without
+    # the file behaves exactly as before.
+    if os.path.exists('docker-compose.aws.yml'):
+        docker_compose_args += ' --file docker-compose.aws.yml'
     if args.ssl or (ssl_key and ssl_cert):
         docker_compose_args +=" --file docker-compose.ssl.yml"
     if args.ssl and not (ssl_key and ssl_cert):
