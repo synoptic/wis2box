@@ -25,6 +25,12 @@ jobs:
     steps:
       - name: Checkout branch
         uses: actions/checkout@v4
+        with:
+          # Default is true, which writes the job's GITHUB_TOKEN into
+          # .git/config as http.https://github.com/.extraheader. The post-job
+          # step strips it, but that runs AFTER the build -- so with .git in
+          # the build context the token lands in a published layer.
+          persist-credentials: false
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -48,6 +54,11 @@ jobs:
           platforms: linux/amd64
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          # A manual re-run rebuilds from scratch. Without this, the gha cache
+          # replays the apt/pip layers and a rebuild picks up no upstream
+          # security fixes unless the base image digest itself moved -- which
+          # is the whole point of being able to rebuild on demand.
+          no-cache: ${{ github.event_name == 'workflow_dispatch' }}
           push: true
           tags: ghcr.io/${{ github.repository_owner }}/wis2box-management:${{ github.sha }}
 
