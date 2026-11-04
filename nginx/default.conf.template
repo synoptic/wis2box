@@ -15,7 +15,18 @@
 #     Providers now PUT to the regional S3 endpoint directly.
 #   - location /data  repointed at S3 with the full directive set required to
 #     talk to it correctly (see comments inline).
-limit_req_zone $binary_remote_addr zone=my_zone:10m rate=25r/s;
+# NOTE: $binary_remote_addr is NOT the client's address. The NLB target groups
+# set preserve_client_ip=false -- they have to, or the security group drops
+# every real request (see foundation_stack._build_front_door) -- so every
+# request arrives from one of two load-balancer addresses. This zone therefore
+# limits ALL clients collectively, not each one.
+#
+# The rate is set high deliberately. At 25r/s a single Global Cache fetching a
+# backlog would trip it and lock everyone out, which is worse than no limit.
+# What remains is a crude overload backstop, NOT protection against brute
+# force on the admin paths -- that needs an L7 front door that sets
+# X-Forwarded-For. Until then, admin auth stands on password strength alone.
+limit_req_zone $binary_remote_addr zone=my_zone:10m rate=400r/s;
 
 # Websocket upgrade, for Grafana live panels. Must sit in the http context,
 # which a conf.d/ file is included into -- hence outside the server block.
